@@ -1,0 +1,1864 @@
+<!doctype html>
+<html lang="zh-CN" data-scheme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>音乐</title>
+<style>
+  /* First-frame values follow the host's default appearance; the host then
+     sends every name below inline on <html>, which outranks these blocks. */
+  :root {
+    --surface-solid: #ffffff;
+    --surface-raised: #f6f6f3;
+    --control-fill: #efefeb;
+    --ink: #1d1d1f;
+    --ink-soft: #6b6b70;
+    --line: #deded9;
+    --line-strong: #c9c9c3;
+    --accent: #2f6fed;
+    --accent-ink: #ffffff;
+    --danger: #c0392b;
+    --font-body: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-pill: 999px;
+    color-scheme: light;
+  }
+  :root[data-scheme="dark"] {
+    --surface-solid: #1c1c1e;
+    --surface-raised: #262628;
+    --control-fill: #2e2e31;
+    --ink: #f2f2f4;
+    --ink-soft: #a1a1a6;
+    --line: #3a3a3d;
+    --line-strong: #4a4a4e;
+    --accent: #6f9dff;
+    --accent-ink: #101014;
+    --danger: #ff7b6f;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  /* The root owns the frame's canvas, and the page itself never scrolls:
+     the library and the lyric sheet are the two bounded scrollers. */
+  html { background: var(--surface-solid); }
+  body {
+    background: var(--surface-solid);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 13px;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: default; }
+  svg { display: block; }
+  .icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .icon.fill { fill: currentColor; stroke: none; }
+
+  .player {
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+
+  /* ---- list tools ------------------------------------------------------ */
+  /* The search field and the platform scope live in the list column, directly
+     above the rows they act on, and fold away with their tabs: a bar of their
+     own would spend a whole page row on a control two tabs use. */
+  .library-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+    padding: 0 16px 10px;
+  }
+  .library-tools[hidden] { display: none; }
+  .search {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 30px;
+    padding: 0 10px 0 9px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--surface-raised);
+  }
+  .search[hidden] { display: none; }
+  .search:focus-within { border-color: var(--line-strong); background: var(--surface-solid); }
+  .search .icon { color: var(--ink-soft); flex: 0 0 auto; }
+  .search input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    border: 0;
+    background: transparent;
+    outline: none;
+    font-size: 12.5px;
+  }
+  .search input::placeholder { color: var(--ink-soft); }
+  /* The platform is the scope of both the search and the chart, so it stands
+     at the row's end rather than inside whichever field is showing. It is a
+     quiet word plus a chevron, not a second field: a row holds exactly one
+     bordered control, or the two boxes read as competing inputs. */
+  .source-picker {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    margin-left: auto;
+    height: 26px;
+    border-radius: var(--radius-xs);
+  }
+  .source-picker:hover { background: var(--control-fill); }
+  .source-picker select {
+    appearance: none;
+    -webkit-appearance: none;
+    height: 100%;
+    padding: 0 19px 0 8px;
+    border: 0;
+    background: transparent;
+    color: var(--ink-soft);
+    font-size: 12px;
+    font-weight: 600;
+    outline: none;
+  }
+  .source-picker select:hover { color: var(--ink); }
+  .source-picker select:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    border-radius: var(--radius-xs);
+  }
+  .source-picker .icon {
+    position: absolute;
+    right: 5px;
+    width: 11px;
+    height: 11px;
+    pointer-events: none;
+  }
+
+  /* ---- stage --------------------------------------------------------- */
+  /* The page is the host's plain canvas: the list column, the sheet and the
+     transport sit on `--surface-solid` and only their own lines separate
+     them. The playing cover stays in the now block and the rows — it never
+     becomes the page's background. */
+  .stage {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    z-index: 1;
+    overflow: hidden;
+  }
+  .library {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 304px;
+    min-width: 232px;
+    min-height: 0;
+    border-right: 1px solid var(--line);
+    background: var(--surface-solid);
+  }
+  /* With a song on, the page is the player and its lyrics: the list steps
+     aside until its toggle (or `/`) asks for it. The rows keep their DOM and
+     scroll position; only the column leaves the frame. */
+  .player:not(.list-open) .library { display: none; }
+  /* With the list away the sheet owns the frame, so its text keeps a reading
+     measure and the lyrics grow instead of stretching a 16px line across it. */
+  .player:not(.list-open) .now,
+  .player:not(.list-open) .lyrics {
+    width: 100%;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+  /* The album is the anchor there: the cover steps up to a sleeve and the
+     block stacks under it, centred, so the page reads as a record rather than
+     a sidebar without a list. */
+  .player:not(.list-open) .now {
+    flex-direction: column;
+    gap: 18px;
+    padding: 34px 26px 12px;
+    text-align: center;
+  }
+  .player:not(.list-open) .now-art {
+    width: 168px;
+    height: 168px;
+    border-radius: var(--radius-lg);
+    box-shadow: 0 26px 54px -26px color-mix(in srgb, var(--ink) 55%, transparent);
+  }
+  .player:not(.list-open) .now-art .icon { width: 54px; height: 54px; }
+  .player:not(.list-open) .now-title {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .player:not(.list-open) .now-meta { margin-top: 6px; font-size: 13px; }
+  .player:not(.list-open) .now-badges { justify-content: center; margin-top: 10px; }
+  /* The lines follow the sleeve's axis: centred under it, the sung line in
+     the ink of a title and a touch heavier, the rest stepping back. The
+     side bar belongs to the list view's left edge, not to a centred column. */
+  .player:not(.list-open) .lyrics { padding: 16px 26px 40px; text-align: center; }
+  .player:not(.list-open) .lyric-line { padding: 7px 0; font-size: clamp(17px, 4vw, 26px); }
+  .player:not(.list-open) .lyric-line.active { font-weight: 700; }
+  .player:not(.list-open) .lyric-line.active::before { display: none; }
+  .library-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex: 0 0 auto;
+    padding: 10px 16px 8px;
+  }
+  .library-tabs { display: flex; align-items: center; gap: 16px; }
+  .library-tab {
+    position: relative;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--ink-soft);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .library-tab:hover { color: var(--ink); }
+  .library-tab[aria-selected="true"] { color: var(--ink); font-weight: 700; }
+  .library-tab[aria-selected="true"]::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -4px;
+    height: 2px;
+    border-radius: var(--radius-pill);
+    background: var(--accent);
+  }
+  /* The two kinds hug their words: stretching them across the column left a
+     wide empty track that read as a broken field. */
+  .chart-kinds {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: 0 0 auto;
+    height: 30px;
+    padding: 2px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--surface-raised);
+  }
+  .chart-kinds[hidden] { display: none; }
+  .chart-kind {
+    flex: 0 0 auto;
+    height: 24px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: var(--radius-xs);
+    background: transparent;
+    color: var(--ink-soft);
+    font-size: 11.5px;
+    font-weight: 550;
+  }
+  .chart-kind:hover { color: var(--ink); }
+  .chart-kind[aria-selected="true"] {
+    background: var(--surface-solid);
+    color: var(--ink);
+    box-shadow: 0 0 0 1px var(--line);
+  }
+  .library-count {
+    margin-left: auto;
+    color: var(--ink-soft);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+  .library-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    /* The rows are cards: they need a gap from the column's edge on both
+       sides, or the list reads as if it were cut off by the panel frame. */
+    padding: 8px 16px 16px;
+    scroll-padding-block: 8px;
+  }
+  .row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+    width: 100%;
+    min-height: 52px;
+    padding: 7px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+    text-align: left;
+  }
+  .row:hover { border-color: var(--line-strong); }
+  /* A row can be both playing and focused: the card keeps one frame, the
+     focus material is an inner stroke and selection is the tint plus the
+     accent title, never a second ring (D-1056). */
+  .row:focus-visible {
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+    outline: none;
+  }
+  .row.playing {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface-raised));
+  }
+  .row-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .row-rank {
+    flex: 0 0 18px;
+    color: var(--ink-soft);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .row-art {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 40px;
+    height: 40px;
+    overflow: hidden;
+    border-radius: var(--radius-sm);
+    background: var(--control-fill);
+    color: var(--ink-soft);
+  }
+  .row-art img { width: 100%; height: 100%; object-fit: cover; }
+  .row-art .icon { width: 17px; height: 17px; }
+  .row-text { min-width: 0; }
+  .row-title {
+    overflow: hidden;
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .row.playing .row-title { color: var(--accent); }
+  .row-meta {
+    overflow: hidden;
+    margin-top: 2px;
+    color: var(--ink-soft);
+    font-size: 11.5px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .row-side {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    color: var(--ink-soft);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+  .row-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-xs);
+    background: transparent;
+    color: var(--ink-soft);
+    opacity: 0;
+  }
+  .row:hover .row-action, .row-action:focus-visible { opacity: 1; }
+  .row-action:hover { background: var(--control-fill); color: var(--ink); }
+  /* A blank tab gets a mark, a sentence and a hint in three ranks: the circle
+     carries the icon, the title says what is missing, the note says what to
+     do — a single grey paragraph read as one flat line. */
+  .empty {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 32px 22px;
+    color: var(--ink-soft);
+    font-size: 12px;
+    line-height: 1.6;
+    text-align: center;
+  }
+  .empty-mark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    background: var(--control-fill);
+    color: var(--ink-soft);
+  }
+  .empty-mark .icon { width: 22px; height: 22px; }
+  .empty-text { display: flex; flex-direction: column; gap: 4px; }
+  .empty-title { color: var(--ink); font-size: 13px; font-weight: 650; }
+  .empty-note { max-width: 220px; font-size: 12px; }
+
+  /* Recent queries are quiet lines, not cards: they are a search history, so
+     only the hover fills them and the remove waits for the row. */
+  .recent-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex: 0 0 auto;
+    padding: 6px 4px 2px;
+    color: var(--ink-soft);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .recent-clear {
+    height: 22px;
+    padding: 0 2px;
+    border: 0;
+    border-radius: var(--radius-xs);
+    background: transparent;
+    color: var(--ink-soft);
+    font-size: 11px;
+    font-weight: 550;
+  }
+  .recent-clear:hover { color: var(--ink); }
+  .recent-row {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    min-height: 38px;
+    border-radius: var(--radius-sm);
+  }
+  .recent-row:hover { background: var(--control-fill); }
+  .recent-run {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 38px;
+    padding: 0 4px 0 6px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--ink);
+    font-size: 12.5px;
+    font-weight: 550;
+    text-align: left;
+  }
+  .recent-run .icon { flex: 0 0 auto; width: 14px; height: 14px; color: var(--ink-soft); }
+  .recent-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .recent-forget {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    margin-right: 3px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-xs);
+    background: transparent;
+    color: var(--ink-soft);
+    opacity: 0;
+  }
+  .recent-row:hover .recent-forget, .recent-forget:focus-visible { opacity: 1; }
+  .recent-forget:hover { background: var(--surface-solid); color: var(--ink); }
+  .recent-forget .icon { width: 12px; height: 12px; }
+  /* A pointer that cannot hover would never reveal the remove: keep it dimly
+     present there instead of invisible. */
+  @media (hover: none) {
+    .recent-forget { opacity: 0.7; }
+  }
+
+  /* The playing row says so with motion: three bars step out of phase where
+     the duration sits, and rest at a fixed height when motion is reduced. */
+  .row-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    width: 13px;
+    height: 12px;
+  }
+  .row-bars i {
+    width: 2px;
+    height: 100%;
+    border-radius: var(--radius-pill);
+    background: var(--accent);
+    transform-origin: bottom;
+    animation: bars 900ms ease-in-out infinite;
+  }
+  .row-bars i:nth-child(2) { animation-delay: -300ms; }
+  .row-bars i:nth-child(3) { animation-delay: -600ms; }
+  @keyframes bars {
+    0%, 100% { transform: scaleY(0.35); }
+    50% { transform: scaleY(1); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .row-bars i { animation: none; transform: scaleY(0.6); }
+  }
+
+  /* ---- lyric sheet ---------------------------------------------------- */
+  .sheet {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+  }
+  .now {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex: 0 0 auto;
+    padding: 16px 26px 6px;
+  }
+  /* Without a song the block must not leave an empty art frame; the UA
+     [hidden] rule loses to the author display above. */
+  .now[hidden] { display: none; }
+  .now-art {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 76px;
+    height: 76px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+    color: var(--ink-soft);
+  }
+  .now-art img { width: 100%; height: 100%; object-fit: cover; }
+  .now-art .icon { width: 30px; height: 30px; stroke-width: 1.2; }
+  .now-text { min-width: 0; }
+  .now-title {
+    overflow: hidden;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .now-meta {
+    overflow: hidden;
+    margin-top: 3px;
+    color: var(--ink-soft);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .now-badges { display: flex; align-items: center; gap: 6px; margin-top: 7px; }
+  .badge {
+    padding: 2px 7px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    color: var(--ink-soft);
+    font-size: 10.5px;
+    font-weight: 550;
+  }
+  .lyrics {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 18px 34px 40px;
+    scroll-padding-block: 38%;
+  }
+  .lyric-line {
+    position: relative;
+    padding: 6px 0 6px 16px;
+    color: var(--ink-soft);
+    font-size: clamp(16px, 2vw, 25px);
+    font-weight: 600;
+    letter-spacing: 0.005em;
+    line-height: 1.5;
+    transition: color 160ms ease, transform 160ms ease;
+  }
+  .lyric-line:hover { color: var(--ink); }
+  .lyric-line.active { color: var(--ink); }
+  .lyric-line.active::before {
+    content: "";
+    position: absolute;
+    top: 12px;
+    bottom: 12px;
+    left: 0;
+    width: 3px;
+    border-radius: var(--radius-pill);
+    background: var(--accent);
+  }
+  .lyric-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--ink-soft);
+    font-size: 13px;
+    line-height: 1.7;
+    text-align: center;
+  }
+  .hero {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 30px;
+    text-align: center;
+  }
+  /* The waiting sheet is a sleeve with nothing in it yet: one quiet tile,
+     a title and a hint, so the empty state still has an anchor. */
+  .hero-art {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 150px;
+    height: 150px;
+    border-radius: var(--radius-lg);
+    background: var(--control-fill);
+    box-shadow: inset 0 0 0 1px var(--line);
+    color: var(--ink-soft);
+  }
+  .hero-art .icon { width: 44px; height: 44px; stroke-width: 1.2; opacity: 0.8; }
+  .hero-title { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+  .hero-note { max-width: 300px; color: var(--ink-soft); font-size: 12.5px; line-height: 1.65; }
+
+  /* ---- transport ------------------------------------------------------ */
+  .transport {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 0 0 auto;
+    padding: 10px 20px 14px;
+    border-top: 1px solid var(--line);
+    background: var(--surface-solid);
+  }
+  .progress-row { display: flex; align-items: center; gap: 10px; }
+  .time {
+    flex: 0 0 auto;
+    width: 38px;
+    color: var(--ink-soft);
+    font-size: 10.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .time.right { text-align: right; }
+  .range {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+    height: 14px;
+    margin: 0;
+    background: transparent;
+  }
+  .range::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: var(--radius-pill);
+    background: linear-gradient(to right,
+      var(--accent) 0, var(--accent) var(--fill, 0%), var(--control-fill) var(--fill, 0%));
+  }
+  .range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 11px;
+    height: 11px;
+    margin-top: -3.5px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 2px var(--surface-solid);
+  }
+  .range:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-pill); }
+  .range:disabled::-webkit-slider-thumb { background: var(--line-strong); }
+  .transport-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+  }
+  .mini { display: flex; align-items: center; gap: 9px; min-width: 0; }
+  .mini-art {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    overflow: hidden;
+    border-radius: var(--radius-sm);
+    background: var(--control-fill);
+    color: var(--ink-soft);
+  }
+  .mini-art img { width: 100%; height: 100%; object-fit: cover; }
+  .mini-art .icon { width: 15px; height: 15px; }
+  .mini-text { min-width: 0; }
+  .mini-title {
+    overflow: hidden;
+    font-size: 12px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mini-meta {
+    overflow: hidden;
+    color: var(--ink-soft);
+    font-size: 10.5px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .icon-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-xs);
+    background: transparent;
+    color: var(--ink-soft);
+  }
+  .icon-button:hover { background: var(--control-fill); color: var(--ink); }
+  .icon-button[aria-pressed="true"] { color: var(--accent); }
+  .icon-button[aria-pressed="true"] .icon { fill: currentColor; }
+  .controls { display: flex; align-items: center; gap: 6px; }
+  .control {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--ink-soft);
+  }
+  .control:hover { background: var(--control-fill); color: var(--ink); }
+  .control[aria-pressed="true"] { color: var(--accent); }
+  .control.primary {
+    width: 40px;
+    height: 40px;
+    margin: 0 4px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--accent-ink);
+    box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--accent) 70%, transparent);
+  }
+  .control.primary:hover { background: var(--accent); color: var(--accent-ink); opacity: 0.9; }
+  .control.primary .icon { width: 18px; height: 18px; }
+  .volume { display: flex; align-items: center; justify-content: flex-end; gap: 7px; min-width: 0; }
+  .volume .icon { flex: 0 0 auto; color: var(--ink-soft); }
+  .volume .range { flex: 0 0 92px; width: 92px; }
+  button:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .toast {
+    position: fixed;
+    /* Above the content bands (z-index 1) that sit on the ambience, or the
+       stage would paint over it and a failure would go unseen. */
+    z-index: 4;
+    left: 50%;
+    bottom: 116px;
+    max-width: min(420px, calc(100% - 48px));
+    padding: 7px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
+    color: var(--ink);
+    font-size: 12px;
+    line-height: 1.5;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, 6px);
+    transition: opacity 160ms ease, transform 160ms ease;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .toast[data-tone="error"] { border-color: var(--danger); color: var(--danger); }
+  audio { display: none; }
+
+  /* ---- narrow and short frames --------------------------------------- */
+  /* The app can host the page in a narrow sidebar: the two columns stack, the
+     list keeps enough height for its rows to be usable, and the now strip
+     gives up the volume instead of squeezing the title. */
+  @media (max-width: 760px) {
+    .stage { flex-direction: column; }
+    .library {
+      flex: 0 0 auto;
+      min-width: 0;
+      max-height: 38%;
+      min-height: 196px;
+      border-right: 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .now { padding: 12px 16px 4px; }
+    .now-art { width: 58px; height: 58px; }
+    /* A sidebar is short as well as narrow: the sleeve keeps its step up
+       without eating the lyrics' room. */
+    .player:not(.list-open) .now { gap: 14px; padding: 22px 16px 8px; }
+    .player:not(.list-open) .now-art { width: 128px; height: 128px; }
+    .player:not(.list-open) .now-title { font-size: 21px; }
+    .lyrics { padding: 14px 20px 28px; }
+    .transport { padding: 8px 14px 12px; }
+    .transport-row { grid-template-columns: minmax(0, 1fr) auto; }
+    .volume { display: none; }
+  }
+  /* A sidebar is too narrow for the title and the buttons side by side there:
+     the title keeps a row of its own and the buttons sit under it. */
+  @media (max-width: 520px) {
+    .transport-row {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 2px;
+    }
+    .controls { justify-content: center; }
+  }
+  @media (max-height: 560px) {
+    .now { display: none; }
+    .library { max-height: 46%; }
+  }
+</style>
+</head>
+<body>
+<main class="player list-open">
+  <section class="stage">
+    <aside class="library">
+      <div class="library-head">
+        <div class="library-tabs" role="tablist" aria-label="列表">
+          <button class="library-tab" data-tab="search" role="tab" aria-selected="true">搜索</button>
+          <button class="library-tab" data-tab="chart" role="tab" aria-selected="false">榜单</button>
+          <button class="library-tab" data-tab="favorites" role="tab" aria-selected="false">收藏</button>
+          <button class="library-tab" data-tab="queue" role="tab" aria-selected="false">队列</button>
+        </div>
+        <span class="library-count" id="library-count"></span>
+      </div>
+      <div class="library-tools" id="library-tools">
+        <form class="search" id="search-form" role="search">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.4"/><path d="M10.3 10.3 14 14"/></svg>
+          <input id="search-input" type="search" placeholder="搜索歌曲、歌手" autocomplete="off" spellcheck="false" aria-label="搜索歌曲、歌手">
+        </form>
+        <div class="chart-kinds" id="chart-kinds" role="tablist" aria-label="榜单种类" hidden>
+          <button class="chart-kind" data-kind="hot" role="tab" aria-selected="true">热歌榜</button>
+          <button class="chart-kind" data-kind="new" role="tab" aria-selected="false">新歌榜</button>
+        </div>
+        <label class="source-picker" title="音乐平台">
+          <select id="source-select" aria-label="音乐平台">
+            <option value="netease">网易云</option>
+            <option value="qq">QQ 音乐</option>
+            <option value="kuwo">酷我</option>
+          </select>
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.5 8 10l3.5-3.5"/></svg>
+        </label>
+      </div>
+      <div class="library-list" id="library-list" role="tabpanel"></div>
+    </aside>
+
+    <section class="sheet">
+      <div class="now" id="now" hidden>
+        <div class="now-art" id="now-art"></div>
+        <div class="now-text">
+          <div class="now-title" id="now-title"></div>
+          <div class="now-meta" id="now-meta"></div>
+          <div class="now-badges">
+            <span class="badge" id="now-source"></span>
+            <span class="badge" id="now-quality" hidden></span>
+          </div>
+        </div>
+      </div>
+      <div class="lyrics" id="lyrics"></div>
+    </section>
+  </section>
+
+  <footer class="transport">
+    <div class="progress-row">
+      <span class="time" id="time-now">0:00</span>
+      <input class="range" id="seek" type="range" min="0" max="1000" value="0" disabled aria-label="播放进度">
+      <span class="time right" id="time-total">0:00</span>
+    </div>
+    <div class="transport-row">
+      <div class="mini">
+        <div class="mini-art" id="mini-art"></div>
+        <div class="mini-text">
+          <div class="mini-title" id="mini-title">没有在播放</div>
+          <div class="mini-meta" id="mini-meta">选一首歌开始</div>
+        </div>
+        <button class="icon-button" id="favorite" type="button" aria-pressed="false" aria-label="收藏当前歌曲" title="收藏">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.4 3.1 8.7a2.9 2.9 0 0 1 0-4.2 3 3 0 0 1 4.2 0l.7.7.7-.7a3 3 0 0 1 4.2 0 2.9 2.9 0 0 1 0 4.2z"/></svg>
+        </button>
+        <button class="icon-button" id="library-toggle" type="button" aria-expanded="true" aria-label="收起列表" title="收起列表" disabled>
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.6 4.2h8.2M5.6 8h8.2M5.6 11.8h8.2M2.9 4.2h.01M2.9 8h.01M2.9 11.8h.01"/></svg>
+        </button>
+      </div>
+      <div class="controls">
+        <button class="control" id="shuffle" type="button" aria-pressed="false" aria-label="随机播放" title="随机播放">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h1.9c1 0 1.6.4 2.2 1.2l3 4.6c.5.8 1.2 1.2 2.2 1.2h1.7"/><path d="M11.6 9.6l2 1.9-2 1.9"/><path d="M2.5 11.5h1.9c1 0 1.6-.4 2.2-1.2l.4-.6"/><path d="M9.5 5.7l.3-.5c.5-.8 1.2-1.2 2.2-1.2h1.5"/><path d="M11.6 2.1l2 1.9-2 1.9"/></svg>
+        </button>
+        <button class="control" id="previous" type="button" aria-label="上一首" title="上一首">
+          <svg class="icon fill" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3.5h1.4v9H4zM12.3 3.6v8.8L5.9 8z"/></svg>
+        </button>
+        <button class="control primary" id="toggle" type="button" aria-label="播放" title="播放">
+          <svg class="icon fill" id="toggle-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 3.4 12.4 8l-7.2 4.6z"/></svg>
+        </button>
+        <button class="control" id="next" type="button" aria-label="下一首" title="下一首">
+          <svg class="icon fill" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.6 3.5H12v9h-1.4zM3.7 3.6v8.8L10.1 8z"/></svg>
+        </button>
+        <button class="control" id="repeat" type="button" aria-pressed="true" aria-label="循环模式：列表循环" title="列表循环">
+          <svg class="icon" id="repeat-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 6.4a4 4 0 0 1 4-3.2h4.3"/><path d="M9.9 1.7 11.6 3.2 9.9 4.7"/><path d="M12.8 9.6a4 4 0 0 1-4 3.2H4.5"/><path d="M6.1 14.3 4.4 12.8 6.1 11.3"/></svg>
+        </button>
+      </div>
+      <div class="volume">
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6.2h2.2L8.3 4v8L5.2 9.8H3z"/><path d="M10.4 6.1a2.7 2.7 0 0 1 0 3.8"/><path d="M12.2 4.5a5 5 0 0 1 0 7"/></svg>
+        <input class="range" id="volume" type="range" min="0" max="100" value="80" aria-label="音量">
+      </div>
+    </div>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <audio id="audio" preload="metadata"></audio>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var PLUGIN_ID = "com.mypaste.music";
+  var COMMAND_ID = "music.request";
+  var SOURCE_NAMES = { netease: "网易云", qq: "QQ 音乐", kuwo: "酷我" };
+  var SOURCE_ORDER = ["netease", "qq", "kuwo"];
+  // The search tab remembers this many queries; the runtime enforces the
+  // same count and the same keyword length.
+  var SEARCH_HISTORY = 5;
+
+  var root = document.documentElement;
+  var audio = document.getElementById("audio");
+  var list = document.getElementById("library-list");
+  var count = document.getElementById("library-count");
+  var tools = document.getElementById("library-tools");
+  var chartKinds = document.getElementById("chart-kinds");
+  var lyrics = document.getElementById("lyrics");
+  var now = document.getElementById("now");
+  var nowArt = document.getElementById("now-art");
+  var nowTitle = document.getElementById("now-title");
+  var nowMeta = document.getElementById("now-meta");
+  var nowSource = document.getElementById("now-source");
+  var nowQuality = document.getElementById("now-quality");
+  var miniArt = document.getElementById("mini-art");
+  var miniTitle = document.getElementById("mini-title");
+  var miniMeta = document.getElementById("mini-meta");
+  var seek = document.getElementById("seek");
+  var timeNow = document.getElementById("time-now");
+  var timeTotal = document.getElementById("time-total");
+  var volume = document.getElementById("volume");
+  var toggle = document.getElementById("toggle");
+  var toggleIcon = document.getElementById("toggle-icon");
+  var favorite = document.getElementById("favorite");
+  var libraryToggle = document.getElementById("library-toggle");
+  var player = document.querySelector(".player");
+  var repeatButton = document.getElementById("repeat");
+  var shuffleButton = document.getElementById("shuffle");
+  var searchForm = document.getElementById("search-form");
+  var searchInput = document.getElementById("search-input");
+  var toast = document.getElementById("toast");
+
+  var sequence = 0;
+  var pending = new Map();
+  var toastTimer = 0;
+  var saveTimer = 0;
+  var lyricRequest = 0;
+  var chartRequest = 0;
+  var switchTicket = 0;
+  var themed = false;
+  var themeAttempts = 0;
+  var sourceSelect = document.getElementById("source-select");
+
+  var state = {
+    source: "netease",
+    tab: "search",
+    /* View state, page-only: with a song on the page shows the player and
+       its lyrics, and the list is one toggle (or `/`) away. */
+    browsing: true,
+    results: [],
+    chartKind: "hot",
+    chartSongs: [],
+    chartLoading: false,
+    chartSource: "",
+    favorites: [],
+    /* The last few queries, newest first: the search tab opens on them, and
+       they outlive the tab switch and the app restart. */
+    searches: [],
+    queue: [],
+    index: -1,
+    current: null,
+    playing: false,
+    repeat: "all",
+    shuffle: false,
+    volume: 0.8,
+    quality: "",
+    lyric: [],
+    lyricIndex: -1,
+    lyricLoading: false,
+    loading: false,
+    searched: false
+  };
+
+  var ICONS = {
+    note: '<svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.2 12.1V4.3l6.3-1.5v7.6"/><circle cx="4.7" cy="12.1" r="1.5"/><circle cx="11" cy="10.4" r="1.5"/></svg>',
+    plus: '<svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.2v9.6M3.2 8h9.6"/></svg>',
+    remove: '<svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
+    search: '<svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.4"/><path d="M10.3 10.3 14 14"/></svg>',
+    clock: '<svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.4"/><path d="M8 4.9v3.3l2.1 1.3"/></svg>'
+  };
+
+  /* ---- host bridge ---------------------------------------------------- */
+
+  function invoke(payload) {
+    return new Promise(function (resolve, reject) {
+      var requestId = ++sequence;
+      pending.set(requestId, { resolve: resolve, reject: reject });
+      parent.postMessage({
+        v: 1,
+        type: "invoke",
+        requestId: requestId,
+        pluginId: PLUGIN_ID,
+        commandId: COMMAND_ID,
+        text: JSON.stringify(payload)
+      }, "*");
+    }).then(function (output) {
+      if (!output) return null;
+      try { return JSON.parse(output); } catch (error) { return null; }
+    });
+  }
+
+  function applyTheme(message) {
+    themed = true;
+    root.dataset.scheme = message.scheme === "dark" ? "dark" : "light";
+    var tokens = message.tokens || {};
+    Object.keys(tokens).forEach(function (name) {
+      root.style.setProperty("--" + name, tokens[name]);
+    });
+  }
+
+  window.addEventListener("message", function (event) {
+    var message = event.data;
+    if (!message || message.v !== 1) return;
+    if (message.type === "theme") { applyTheme(message); return; }
+    if (message.type !== "result") return;
+    var entry = pending.get(message.requestId);
+    if (!entry) return;
+    pending.delete(message.requestId);
+    if (message.ok) entry.resolve(message.output);
+    else entry.reject(new Error(message.error || "操作失败"));
+  });
+
+  /* ---- small helpers -------------------------------------------------- */
+
+  function icon(name) { return ICONS[name] || ICONS.note; }
+
+  function escapeText(text) {
+    return String(text == null ? "" : text)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function clock(seconds) {
+    if (!isFinite(seconds) || seconds < 0) return "0:00";
+    var whole = Math.floor(seconds);
+    var minute = Math.floor(whole / 60);
+    var rest = whole % 60;
+    return minute + ":" + (rest < 10 ? "0" : "") + rest;
+  }
+
+  function sourceName(source) { return SOURCE_NAMES[source] || source; }
+
+  function showToast(text, tone) {
+    toast.textContent = text;
+    toast.dataset.tone = tone || "";
+    toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toast.classList.remove("show"); }, tone === "error" ? 6000 : 3200);
+  }
+
+  function artHTML(song) {
+    if (song && song.cover) {
+      return '<img src="' + escapeText(song.cover) + '" alt="" loading="lazy" referrerpolicy="no-referrer">';
+    }
+    return icon("note");
+  }
+
+  function sameSong(a, b) {
+    return !!a && !!b && a.source === b.source && a.id === b.id;
+  }
+
+  function isFavorite(song) {
+    return state.favorites.some(function (row) { return sameSong(row, song); });
+  }
+
+  /* ---- persistence ---------------------------------------------------- */
+
+  function snapshot() {
+    return {
+      volume: state.volume,
+      source: state.source,
+      favorites: state.favorites,
+      recent: state.queue.slice(0, 40),
+      searches: state.searches,
+      repeat: state.repeat,
+      shuffle: state.shuffle
+    };
+  }
+
+  function saveState() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      invoke({ action: "state.save", state: snapshot() }).catch(function () {});
+    }, 400);
+  }
+
+  function loadState() {
+    return invoke({ action: "state.load" }).then(function (answer) {
+      var stored = answer && answer.state;
+      if (!stored) return;
+      if (typeof stored.volume === "number") state.volume = stored.volume;
+      if (SOURCE_ORDER.indexOf(stored.source) >= 0) state.source = stored.source;
+      if (Array.isArray(stored.favorites)) state.favorites = stored.favorites;
+      if (Array.isArray(stored.searches)) {
+        state.searches = stored.searches.filter(function (word) {
+          return typeof word === "string" && word.trim() !== "";
+        }).slice(0, SEARCH_HISTORY);
+      }
+      if (Array.isArray(stored.recent) && stored.recent.length) state.queue = stored.recent;
+      if (stored.repeat === "one" || stored.repeat === "off" || stored.repeat === "all") state.repeat = stored.repeat;
+      state.shuffle = !!stored.shuffle;
+      volume.value = String(Math.round(state.volume * 100));
+      audio.volume = state.volume;
+      syncSource();
+      syncModeButtons();
+      renderAll();
+    }).catch(function () {});
+  }
+
+  /* ---- rendering ------------------------------------------------------ */
+
+  function syncSource() {
+    sourceSelect.value = state.source;
+  }
+
+  function syncModeButtons() {
+    shuffleButton.setAttribute("aria-pressed", state.shuffle ? "true" : "false");
+    repeatButton.setAttribute("aria-pressed", state.repeat !== "off" ? "true" : "false");
+    var label = state.repeat === "one" ? "单曲循环" : state.repeat === "off" ? "不循环" : "列表循环";
+    repeatButton.setAttribute("aria-label", "循环模式：" + label);
+    repeatButton.title = label;
+    document.getElementById("repeat-icon").innerHTML =
+      state.repeat === "one"
+        ? '<path d="M3.2 6.4a4 4 0 0 1 4-3.2h4.3"/><path d="M9.9 1.7 11.6 3.2 9.9 4.7"/><path d="M12.8 9.6a4 4 0 0 1-4 3.2H4.5"/><path d="M6.1 14.3 4.4 12.8 6.1 11.3"/><path d="M7.4 9.6h1.2v3.2" />'
+        : '<path d="M3.2 6.4a4 4 0 0 1 4-3.2h4.3"/><path d="M9.9 1.7 11.6 3.2 9.9 4.7"/><path d="M12.8 9.6a4 4 0 0 1-4 3.2H4.5"/><path d="M6.1 14.3 4.4 12.8 6.1 11.3"/>';
+  }
+
+  function syncTabs() {
+    document.querySelectorAll(".library-tab").forEach(function (button) {
+      button.setAttribute("aria-selected", button.dataset.tab === state.tab ? "true" : "false");
+    });
+    /* Each list owns the controls that act on it: the field on search, the
+       chart kinds on the chart, and both keep the platform scope. Favorites
+       and the queue need neither, so the row goes away entirely. */
+    searchForm.hidden = state.tab !== "search";
+    chartKinds.hidden = state.tab !== "chart";
+    tools.hidden = state.tab !== "search" && state.tab !== "chart";
+    document.querySelectorAll(".chart-kind").forEach(function (button) {
+      button.setAttribute("aria-selected", button.dataset.kind === state.chartKind ? "true" : "false");
+    });
+  }
+
+  function emptyState(title, note) {
+    list.innerHTML = '<div class="empty">' +
+      '<div class="empty-mark">' + icon("note") + "</div>" +
+      '<div class="empty-text"><div class="empty-title">' + escapeText(title) +
+      '</div><div class="empty-note">' + escapeText(note) + "</div></div></div>";
+  }
+
+  /* The search tab opens on the last few queries instead of a blank note:
+     one quiet line each — a clock, the words, a remove on the right — and one
+     clear-all for the block. A line runs its query again. They are the most
+     recent first, which is the order the list was kept in. */
+  function renderRecent() {
+    var html = '<div class="recent-head"><span>最近搜索</span>' +
+      '<button class="recent-clear" type="button" data-clear-searches>清除</button></div>';
+    state.searches.forEach(function (word) {
+      var safe = escapeText(word);
+      html += '<div class="recent-row">' +
+        '<button class="recent-run" type="button" data-run-search="' + safe + '">' +
+        icon("clock") + '<span class="recent-text">' + safe + "</span></button>" +
+        '<button class="recent-forget" type="button" data-forget-search="' + safe +
+        '" aria-label="删除这条搜索记录" title="删除">' + icon("remove") + "</button></div>";
+    });
+    list.innerHTML = html;
+  }
+
+  function rows() {
+    if (state.tab === "chart") return state.chartSongs;
+    if (state.tab === "favorites") return state.favorites;
+    if (state.tab === "queue") return state.queue;
+    return state.results;
+  }
+
+  function renderList() {
+    syncTabs();
+    var data = rows();
+    count.textContent = data.length ? String(data.length) : "";
+    if (!data.length) {
+      if (state.tab === "search") {
+        // Coming back to an untouched tab keeps the last keyword and results;
+        // only a fresh landing falls through to the recent queries.
+        if (!state.loading && !state.searched && state.searches.length) {
+          renderRecent();
+          return;
+        }
+        emptyState(state.loading ? "正在搜索…" : state.searched ? "没有找到结果" : "搜索一首歌",
+          state.loading ? "请稍候" : state.searched ? "换个关键词或平台再试" :
+            "输入歌名或歌手，按 Enter 搜索");
+      } else if (state.tab === "chart") {
+        emptyState(state.chartLoading ? "正在读取榜单…" : "这个榜单没有内容",
+          state.chartLoading ? "请稍候" : "换一个榜单或平台再试");
+      } else if (state.tab === "favorites") {
+        emptyState("还没有收藏", "播放时点右侧的心形收藏当前歌曲");
+      } else {
+        emptyState("队列是空的", "播放搜索结果后会排在这里");
+      }
+      return;
+    }
+    var html = "";
+    data.forEach(function (song, index) {
+      var playing = sameSong(song, state.current);
+      var action = state.tab === "queue"
+        ? '<button class="row-action" type="button" data-remove="' + index + '" aria-label="从队列移除" title="从队列移除">' + icon("remove") + "</button>"
+        : '<button class="row-action" type="button" data-queue="' + index + '" aria-label="加入队列" title="加入队列">' + icon("plus") + "</button>";
+      var rank = state.tab === "chart" ? '<span class="row-rank">' + (index + 1) + "</span>" : "";
+      // The playing row trades its duration for three bars, the way a track
+      // list does; a paused song keeps the bars resting.
+      var side = playing
+        ? '<span class="row-bars" aria-hidden="true"><i></i><i></i><i></i></span>'
+        : song.duration ? '<span>' + clock(song.duration) + "</span>" : "";
+      html += '<div class="row' + (playing ? " playing" : "") + '" role="button" tabindex="0" data-play="' + index + '" aria-label="播放 ' +
+        escapeText(song.title) + '">' +
+        '<div class="row-main">' + rank + '<div class="row-art">' + artHTML(song) + "</div>" +
+        '<div class="row-text"><div class="row-title">' + escapeText(song.title) + "</div>" +
+        '<div class="row-meta">' + escapeText(song.artist || "未知歌手") +
+        (song.album ? " · " + escapeText(song.album) : "") + "</div></div></div>" +
+        '<div class="row-side">' + side + action + "</div></div>";
+    });
+    list.innerHTML = html;
+  }
+
+  function renderNow() {
+    var song = state.current;
+    now.hidden = !song;
+    var title = song ? song.title : "";
+    var meta = song ? (song.artist || "未知歌手") + (song.album ? " · " + song.album : "") : "";
+    nowTitle.textContent = title;
+    nowMeta.textContent = meta;
+    nowArt.innerHTML = song ? artHTML(song) : "";
+    nowSource.textContent = song ? sourceName(song.source) : "";
+    nowQuality.textContent = state.quality || "";
+    nowQuality.hidden = !state.quality;
+
+    miniTitle.textContent = song ? song.title : "没有在播放";
+    miniMeta.textContent = song ? (song.artist || "未知歌手") : "选一首歌开始";
+    miniArt.innerHTML = song ? artHTML(song) : icon("note");
+    favorite.setAttribute("aria-pressed", song && isFavorite(song) ? "true" : "false");
+    favorite.disabled = !song;
+
+    syncModeButtons();
+  }
+
+  function renderHero() {
+    if (state.current) {
+      renderLyrics();
+      return;
+    }
+    lyrics.innerHTML = '<div class="hero"><div class="hero-art">' + icon("note") + "</div>" +
+      '<div class="hero-title">听一首歌</div>' +
+      '<div class="hero-note">在左侧搜索并播放。歌词会在这里跟随时钟滚动，点任意一行可以跳到那一句。</div></div>';
+  }
+
+  function renderLyrics() {
+    if (!state.current) { renderHero(); return; }
+    if (!state.lyric.length) {
+      lyrics.innerHTML = '<div class="lyric-empty"><div>' +
+        (state.lyricLoading ? "正在读歌词…" : "暂无歌词") +
+        "<br>仍可正常播放</div></div>";
+      return;
+    }
+    var html = "";
+    state.lyric.forEach(function (line, index) {
+      html += '<div class="lyric-line' + (index === state.lyricIndex ? " active" : "") +
+        '" role="button" tabindex="0" data-seek="' + index + '">' + escapeText(line.text) + "</div>";
+    });
+    lyrics.innerHTML = html;
+  }
+
+  // syncPlayingRows repaints only the highlight, so play and pause never
+  // rebuild the list under the pointer or throw away its scroll position.
+  function syncPlayingRows() {
+    var data = rows();
+    list.querySelectorAll("[data-play]").forEach(function (node) {
+      var song = data[parseInt(node.dataset.play, 10)];
+      node.classList.toggle("playing", sameSong(song, state.current));
+    });
+  }
+
+  function render() {
+    renderNow();
+    libraryToggle.disabled = !state.current;
+    syncPlayingRows();
+    toggleIcon.innerHTML = state.playing
+      ? '<path d="M5.2 3.6h2v8.8h-2zM8.8 3.6h2v8.8h-2z"/>'
+      : '<path d="M5.2 3.4 12.4 8l-7.2 4.6z"/>';
+    toggle.setAttribute("aria-label", state.playing ? "暂停" : "播放");
+    toggle.title = state.playing ? "暂停" : "播放";
+  }
+
+  function renderAll() {
+    renderList();
+    renderHero();
+    render();
+  }
+
+  /* ---- playback ------------------------------------------------------- */
+
+  /* adopt names the row the aggregator actually resolved inside the queue
+     that is about to play; until the switch succeeds that queue is a draft,
+     so a refused track never lands in the saved queue. */
+  function adopt(queue, asked, playing) {
+    for (var i = 0; i < queue.length; i++) {
+      if (sameSong(queue[i], asked)) {
+        queue[i] = playing;
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  /* putBack returns the audio element to the track that was playing before a
+     refused switch, at the position it had. */
+  function putBack(kept) {
+    if (!kept.src) {
+      audio.removeAttribute("src");
+      audio.load();
+      return;
+    }
+    var resume = function () {
+      audio.removeEventListener("loadedmetadata", resume);
+      try { audio.currentTime = kept.time; } catch (ignored) {}
+      if (!kept.paused) audio.play().catch(function () {});
+    };
+    audio.src = kept.src;
+    if (audio.readyState >= 1) resume();
+    else audio.addEventListener("loadedmetadata", resume);
+  }
+
+  /* A switch is one transaction. Until the new address actually plays, the
+     page keeps the previous song, queue, index, lyric and audio element
+     untouched, so a refused track leaves the player exactly where it was
+     instead of half-swapping the cover and the list while the lyric stays
+     behind. */
+  function start(song, target) {
+    if (!song) return Promise.resolve();
+    var ticket = ++switchTicket;
+    var playing = song;
+    var kept = { src: audio.src, time: audio.currentTime, paused: audio.paused };
+    showToast("正在解析播放地址…");
+    return invoke({ action: "stream", source: song.source, song: song }).then(function (answer) {
+      if (ticket !== switchTicket) return;
+      if (!answer || !answer.url) throw new Error("没有拿到播放地址");
+      var queue = target ? target.queue.slice() : state.queue.slice();
+      var index = target ? target.index : state.index;
+      /* Only a failed platform address makes the runtime answer with another
+         row; the draft queue adopts it so the mark and the lyric name the
+         track that actually plays. */
+      if (answer.song && answer.song.id) {
+        playing = answer.song;
+        var adopted = adopt(queue, song, playing);
+        if (adopted >= 0) index = adopted;
+      }
+      audio.src = answer.url;
+      audio.volume = state.volume;
+      return audio.play().then(function () {
+        if (ticket !== switchTicket) return;
+        state.queue = queue;
+        state.index = index;
+        if (target) {
+          state.source = target.source;
+          syncSource();
+          /* A song the user picked opens the listening view; a row the queue
+             advanced to on its own leaves the list where the user put it. */
+          if (target.collapse) setBrowsing(false);
+        }
+        state.current = playing;
+        state.quality = answer.quality || "";
+        state.lyric = [];
+        state.lyricIndex = -1;
+        if (playing !== song) {
+          /* The visible list must name the rescued row too, or the playing
+             mark would vanish from a list still showing the refused one. */
+          adopt(state.results, song, playing);
+          adopt(state.chartSongs, song, playing);
+          renderList();
+          showToast("原平台没有给出地址，已用备用接口播放");
+        } else hideToast();
+        saveState();
+        render();
+        renderHero();
+        loadLyric(playing);
+      }, function (error) {
+        if (ticket === switchTicket) putBack(kept);
+        throw error;
+      });
+    }).catch(function (error) {
+      if (ticket !== switchTicket) return;
+      showToast("没能播放这首歌：" + (error.message || "请稍后再试"), "error");
+    });
+  }
+
+  function playAt(index) {
+    var data = rows();
+    var song = data[index];
+    if (!song) return;
+    start(song, { queue: data, index: index, source: song.source, collapse: true });
+  }
+
+  function step(direction) {
+    if (!state.queue.length) return;
+    var next = state.index + direction;
+    if (state.shuffle && state.queue.length > 1) {
+      do { next = Math.floor(Math.random() * state.queue.length); }
+      while (next === state.index);
+    }
+    if (next < 0) {
+      if (state.repeat === "off") return;
+      next = state.queue.length - 1;
+    }
+    if (next >= state.queue.length) {
+      if (state.repeat === "off") { pause(); return; }
+      next = 0;
+    }
+    start(state.queue[next], { queue: state.queue, index: next, source: state.source });
+  }
+
+  function pause() {
+    audio.pause();
+  }
+
+  function togglePlay() {
+    if (state.current && audio.src) {
+      if (audio.paused) audio.play().catch(function () {}); else audio.pause();
+      return;
+    }
+    if (!state.queue.length) return;
+    var index = Math.max(0, state.index);
+    start(state.queue[index], {
+      queue: state.queue, index: index, source: state.source, collapse: true
+    });
+  }
+
+  function loadLyric(song) {
+    var ticket = ++lyricRequest;
+    state.lyricLoading = true;
+    state.lyric = [];
+    state.lyricIndex = -1;
+    renderHero();
+    invoke({ action: "lyric", source: song.source, song: song }).then(function (answer) {
+      if (ticket !== lyricRequest) return;
+      state.lyricLoading = false;
+      state.lyric = parseLRC(answer && answer.lyric ? answer.lyric : "");
+      state.lyricIndex = -1;
+      renderLyrics();
+      updateLyricPosition(true);
+    }).catch(function () {
+      if (ticket !== lyricRequest) return;
+      state.lyricLoading = false;
+      state.lyric = [];
+      renderLyrics();
+    });
+  }
+
+  // parseLRC turns the platform's LRC text into sorted timed lines. Metadata
+  // tags ([ti:], [ar:]) carry no time and are dropped; a line with several
+  // timestamps becomes one entry per timestamp.
+  function parseLRC(text) {
+    var lines = [];
+    text.split(/\r?\n/).forEach(function (row) {
+      var tags = row.match(/\[(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]/g);
+      if (!tags) return;
+      var body = row.replace(/\[[^\]]*\]/g, "").trim();
+      if (!body) return;
+      tags.forEach(function (tag) {
+        var match = tag.match(/\[(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]/);
+        if (!match) return;
+        var second = parseInt(match[1], 10) * 60 + parseFloat(match[2].replace(":", "."));
+        if (isFinite(second)) lines.push({ time: second, text: body });
+      });
+    });
+    lines.sort(function (a, b) { return a.time - b.time; });
+    return lines;
+  }
+
+  function lineIndexAt(second) {
+    var data = state.lyric;
+    if (!data.length) return -1;
+    var low = 0;
+    var high = data.length - 1;
+    var found = -1;
+    while (low <= high) {
+      var middle = (low + high) >> 1;
+      if (data[middle].time <= second + 0.15) { found = middle; low = middle + 1; }
+      else high = middle - 1;
+    }
+    return found;
+  }
+
+  function updateLyricPosition(force) {
+    var index = lineIndexAt(audio.currentTime || 0);
+    if (index === state.lyricIndex && !force) return;
+    state.lyricIndex = index;
+    var nodes = lyrics.querySelectorAll(".lyric-line");
+    nodes.forEach(function (node, position) {
+      node.classList.toggle("active", position === index);
+    });
+    if (index < 0) return;
+    var active = nodes[index];
+    if (!active) return;
+    var target = active.offsetTop - lyrics.clientHeight * 0.38;
+    lyrics.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+  }
+
+  function seekTo(second) {
+    if (!isFinite(audio.duration) || !audio.duration) return;
+    audio.currentTime = Math.min(audio.duration, Math.max(0, second));
+    updateProgress();
+    updateLyricPosition(true);
+  }
+
+  function updateProgress() {
+    var duration = isFinite(audio.duration) ? audio.duration : state.current ? state.current.duration : 0;
+    var current = audio.currentTime || 0;
+    timeNow.textContent = clock(current);
+    timeTotal.textContent = clock(duration);
+    seek.disabled = !(duration > 0);
+    var percent = duration > 0 ? (current / duration) * 100 : 0;
+    seek.value = String(Math.round(percent * 10));
+    seek.style.setProperty("--fill", percent.toFixed(2) + "%");
+    volume.style.setProperty("--fill", Math.round(state.volume * 100) + "%");
+  }
+
+  /* ---- actions -------------------------------------------------------- */
+
+  /* A query is history the moment it is submitted, even if the platform
+     answers with nothing: the tab keeps it to offer again. The newest query
+     sits first, a repeat moves up rather than doubling, and five is the cap
+     the runtime enforces too. */
+  function rememberSearch(keyword) {
+    var word = keyword.trim();
+    if (!word) return;
+    state.searches = [word].concat(state.searches.filter(function (row) {
+      return row !== word;
+    })).slice(0, SEARCH_HISTORY);
+    saveState();
+  }
+
+  function search() {
+    var keyword = searchInput.value.trim();
+    if (!keyword) { searchInput.focus(); return; }
+    rememberSearch(keyword);
+    state.tab = "search";
+    state.loading = true;
+    state.searched = true;
+    state.results = [];
+    renderList();
+    invoke({ action: "search", source: state.source, keyword: keyword, limit: 30 }).then(function (answer) {
+      state.loading = false;
+      state.results = answer && Array.isArray(answer.songs) ? answer.songs : [];
+      renderList();
+      if (!state.results.length) showToast("没有找到结果，试试别的关键词或平台");
+    }).catch(function (error) {
+      state.loading = false;
+      state.results = [];
+      renderList();
+      showToast(error.message || "搜索失败", "error");
+    });
+  }
+
+  function loadChart(kind) {
+    state.tab = "chart";
+    state.chartKind = kind;
+    state.chartLoading = true;
+    state.chartSongs = [];
+    var source = state.source;
+    var token = ++chartRequest;
+    renderList();
+    invoke({ action: "chart", source: source, kind: kind, limit: 50 }).then(function (answer) {
+      if (token !== chartRequest) return;
+      state.chartLoading = false;
+      state.chartSongs = answer && Array.isArray(answer.songs) ? answer.songs : [];
+      state.chartSource = source;
+      renderList();
+      if (!state.chartSongs.length) showToast("这个榜单暂时没有内容，换个平台试试");
+    }).catch(function (error) {
+      if (token !== chartRequest) return;
+      state.chartLoading = false;
+      state.chartSongs = [];
+      state.chartSource = "";
+      renderList();
+      showToast(error.message || "读取榜单失败", "error");
+    });
+  }
+
+  /* ---- search box ------------------------------------------------------ */
+  /* The field belongs to the search tab; `/` from anywhere brings that tab
+     and the caret up without disturbing the rows already on screen. */
+  /* The listening view: a song the user picked from the list hands the screen
+     to the player and its lyrics, and the list comes back only when its
+     toggle or `/` asks for it. Auto-advance never yanks it away mid-browse. */
+  function setBrowsing(open) {
+    state.browsing = open;
+    player.classList.toggle("list-open", open);
+    libraryToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    var label = open ? "收起列表" : "打开列表";
+    libraryToggle.setAttribute("aria-label", label);
+    libraryToggle.title = label;
+  }
+
+  function focusSearch() {
+    setBrowsing(true);
+    if (state.tab !== "search") {
+      selectTab("search");
+    }
+    searchInput.focus();
+  }
+
+  function selectTab(tab) {
+    state.tab = tab;
+    if (tab === "chart" && state.chartSource !== state.source) {
+      loadChart(state.chartKind);
+      return;
+    }
+    renderList();
+  }
+
+  function queueSong(index) {
+    var song = rows()[index];
+    if (!song) return;
+    var exists = state.queue.some(function (row) { return sameSong(row, song); });
+    if (exists) { showToast("已经在队列里"); return; }
+    state.queue.push(song);
+    if (state.tab === "queue") renderList();
+    showToast("已加入队列");
+    saveState();
+  }
+
+  function removeFromQueue(index) {
+    if (state.tab !== "queue") return;
+    var song = state.queue[index];
+    state.queue.splice(index, 1);
+    if (index < state.index) state.index -= 1;
+    else if (index === state.index && sameSong(song, state.current)) state.index = Math.min(state.index, state.queue.length - 1);
+    renderList();
+    saveState();
+  }
+
+  function toggleFavorite() {
+    if (!state.current) return;
+    if (isFavorite(state.current)) {
+      state.favorites = state.favorites.filter(function (row) { return !sameSong(row, state.current); });
+      showToast("已取消收藏");
+    } else {
+      state.favorites.unshift(state.current);
+      showToast("已收藏");
+    }
+    renderNow();
+    if (state.tab === "favorites") renderList();
+    saveState();
+  }
+
+  function cycleRepeat() {
+    state.repeat = state.repeat === "all" ? "one" : state.repeat === "one" ? "off" : "all";
+    syncModeButtons();
+    saveState();
+  }
+
+  function toggleShuffle() {
+    state.shuffle = !state.shuffle;
+    syncModeButtons();
+    saveState();
+  }
+
+  function hideToast() { toast.classList.remove("show"); }
+
+  function setSource(source) {
+    state.source = source;
+    syncSource();
+    saveState();
+    if (state.tab === "chart") { loadChart(state.chartKind); return; }
+    if (searchInput.value.trim() && state.tab === "search") search();
+  }
+
+  /* ---- wiring --------------------------------------------------------- */
+
+  sourceSelect.addEventListener("change", function () { setSource(sourceSelect.value); });
+  document.querySelectorAll(".library-tab").forEach(function (button) {
+    button.addEventListener("click", function () { selectTab(button.dataset.tab); });
+  });
+  document.querySelectorAll(".chart-kind").forEach(function (button) {
+    button.addEventListener("click", function () { loadChart(button.dataset.kind); });
+  });
+  searchForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    search();
+  });
+  list.addEventListener("click", function (event) {
+    var run = event.target.closest("[data-run-search]");
+    if (run) { searchInput.value = run.dataset.runSearch; search(); return; }
+    var forget = event.target.closest("[data-forget-search]");
+    if (forget) {
+      var word = forget.dataset.forgetSearch;
+      state.searches = state.searches.filter(function (row) { return row !== word; });
+      saveState();
+      renderList();
+      return;
+    }
+    if (event.target.closest("[data-clear-searches]")) {
+      state.searches = [];
+      saveState();
+      renderList();
+      return;
+    }
+    var remove = event.target.closest("[data-remove]");
+    if (remove) { removeFromQueue(parseInt(remove.dataset.remove, 10)); return; }
+    var queue = event.target.closest("[data-queue]");
+    if (queue) { queueSong(parseInt(queue.dataset.queue, 10)); return; }
+    var row = event.target.closest("[data-play]");
+    if (row) playAt(parseInt(row.dataset.play, 10));
+  });
+  list.addEventListener("keydown", function (event) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    var row = event.target.closest("[data-play]");
+    if (!row) return;
+    event.preventDefault();
+    playAt(parseInt(row.dataset.play, 10));
+  });
+  lyrics.addEventListener("click", function (event) {
+    var line = event.target.closest("[data-seek]");
+    if (!line) return;
+    var index = parseInt(line.dataset.seek, 10);
+    var entry = state.lyric[index];
+    if (entry) seekTo(entry.time);
+  });
+  lyrics.addEventListener("keydown", function (event) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    var line = event.target.closest("[data-seek]");
+    if (!line) return;
+    event.preventDefault();
+    var entry = state.lyric[parseInt(line.dataset.seek, 10)];
+    if (entry) seekTo(entry.time);
+  });
+  document.getElementById("previous").addEventListener("click", function () {
+    if (audio.currentTime > 3) { seekTo(0); return; }
+    step(-1);
+  });
+  document.getElementById("next").addEventListener("click", function () { step(1); });
+  toggle.addEventListener("click", togglePlay);
+  repeatButton.addEventListener("click", cycleRepeat);
+  shuffleButton.addEventListener("click", toggleShuffle);
+  favorite.addEventListener("click", toggleFavorite);
+  libraryToggle.addEventListener("click", function () {
+    if (state.current) setBrowsing(!state.browsing);
+  });
+  seek.addEventListener("input", function () {
+    if (!isFinite(audio.duration) || !audio.duration) return;
+    audio.currentTime = (parseInt(seek.value, 10) / 1000) * audio.duration;
+    updateProgress();
+    updateLyricPosition(true);
+  });
+  volume.addEventListener("input", function () {
+    state.volume = parseInt(volume.value, 10) / 100;
+    audio.volume = state.volume;
+    updateProgress();
+    saveState();
+  });
+  document.addEventListener("keydown", function (event) {
+    var tag = event.target && event.target.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (event.key === " ") { event.preventDefault(); togglePlay(); }
+    else if (event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      event.preventDefault();
+      focusSearch();
+    }
+    else if (event.key === "Escape" && state.current && state.browsing) {
+      setBrowsing(false);
+    }
+    else if (event.key === "ArrowRight" && event.altKey) seekTo((audio.currentTime || 0) + 5);
+    else if (event.key === "ArrowLeft" && event.altKey) seekTo((audio.currentTime || 0) - 5);
+  });
+
+  audio.addEventListener("play", function () { state.playing = true; render(); });
+  audio.addEventListener("pause", function () { state.playing = false; render(); });
+  audio.addEventListener("timeupdate", function () { updateProgress(); updateLyricPosition(false); });
+  audio.addEventListener("durationchange", updateProgress);
+  audio.addEventListener("loadedmetadata", function () {
+    updateProgress();
+    if (state.current && state.current.duration && (!audio.duration || !isFinite(audio.duration))) {
+      timeTotal.textContent = clock(state.current.duration);
+    }
+  });
+  audio.addEventListener("ended", function () {
+    if (state.repeat === "one") {
+      audio.currentTime = 0;
+      audio.play().catch(function () {});
+      return;
+    }
+    step(1);
+  });
+  audio.addEventListener("error", function () {
+    if (!state.current || !audio.src) return;
+    state.playing = false;
+    render();
+    showToast("这首歌无法播放，可能已下架或需要会员", "error");
+  });
+  window.addEventListener("error", function (event) {
+    if (event && event.message) showToast(event.message, "error");
+  });
+
+  // The host answers `ready` with the theme. A page that mounts while the frame
+  // is still being set up can miss that one answer, so ask again until a theme
+  // arrives instead of painting light on a dark window.
+  function announce() {
+    parent.postMessage({ v: 1, type: "ready" }, "*");
+    themeAttempts += 1;
+    if (!themed && themeAttempts < 10) setTimeout(announce, 300);
+  }
+
+  renderAll();
+  announce();
+  loadState();
+})();
+</script>
+</body>
+</html>
