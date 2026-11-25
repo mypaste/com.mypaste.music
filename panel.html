@@ -797,19 +797,19 @@
   audio { display: none; }
 
   /* ---- narrow and short frames --------------------------------------- */
-  /* The app can host the page in a narrow sidebar: the two columns stack, the
-     list keeps enough height for its rows to be usable, and the now strip
-     gives up the volume instead of squeezing the title. */
+  /* A narrow frame holds one view at a time, never two halves: with the list
+     up it fills the frame and the sheet steps aside, so a row is never cut
+     in half above the lyrics; closing the list (or picking a row) hands the
+     whole frame to the player and its lyrics. The now strip gives up the
+     volume instead of squeezing the title. */
   @media (max-width: 760px) {
-    .stage { flex-direction: column; }
     .library {
-      flex: 0 0 auto;
+      flex: 1 1 auto;
       min-width: 0;
-      max-height: 38%;
-      min-height: 196px;
+      min-height: 0;
       border-right: 0;
-      border-bottom: 1px solid var(--line);
     }
+    .player.list-open .sheet { display: none; }
     .now { padding: 12px 16px 4px; }
     .now-art { width: 58px; height: 58px; }
     /* A sidebar is short as well as narrow: the sleeve keeps its step up
@@ -833,7 +833,6 @@
   }
   @media (max-height: 560px) {
     .now { display: none; }
-    .library { max-height: 46%; }
   }
 </style>
 </head>
