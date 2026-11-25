@@ -920,7 +920,7 @@
           <svg class="icon fill" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.6 3.5H12v9h-1.4zM3.7 3.6v8.8L10.1 8z"/></svg>
         </button>
         <button class="control" id="repeat" type="button" aria-pressed="true" aria-label="循环模式：列表循环" title="列表循环">
-          <svg class="icon" id="repeat-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 6.4a4 4 0 0 1 4-3.2h4.3"/><path d="M9.9 1.7 11.6 3.2 9.9 4.7"/><path d="M12.8 9.6a4 4 0 0 1-4 3.2H4.5"/><path d="M6.1 14.3 4.4 12.8 6.1 11.3"/></svg>
+          <svg class="icon" id="repeat-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M11.33 1.33 14 4l-2.67 2.67"/><path d="M2 7.33V6.67A2.67 2.67 0 0 1 4.67 4H14"/><path d="M4.67 14.67 2 12l2.67-2.67"/><path d="M14 8.67v.66A2.67 2.67 0 0 1 11.33 12H2"/></svg>
         </button>
       </div>
       <div class="volume">
@@ -976,6 +976,14 @@
   var searchForm = document.getElementById("search-form");
   var searchInput = document.getElementById("search-input");
   var toast = document.getElementById("toast");
+
+  /* The repeat button is a loop, the shuffle button its crossing arrows: the
+     two modes never read as the same shape. "Repeat one" keeps the loop and
+     puts the numeral in the space the loop encloses. */
+  var REPEAT_LOOP = '<path d="M11.33 1.33 14 4l-2.67 2.67"/>' +
+    '<path d="M2 7.33V6.67A2.67 2.67 0 0 1 4.67 4H14"/>' +
+    '<path d="M4.67 14.67 2 12l2.67-2.67"/>' +
+    '<path d="M14 8.67v.66A2.67 2.67 0 0 1 11.33 12H2"/>';
 
   var sequence = 0;
   var pending = new Map();
@@ -1168,8 +1176,8 @@
     repeatButton.title = label;
     document.getElementById("repeat-icon").innerHTML =
       state.repeat === "one"
-        ? '<path d="M3.2 6.4a4 4 0 0 1 4-3.2h4.3"/><path d="M9.9 1.7 11.6 3.2 9.9 4.7"/><path d="M12.8 9.6a4 4 0 0 1-4 3.2H4.5"/><path d="M6.1 14.3 4.4 12.8 6.1 11.3"/><path d="M7.4 9.6h1.2v3.2" />'
-        : '<path d="M3.2 6.4a4 4 0 0 1 4-3.2h4.3"/><path d="M9.9 1.7 11.6 3.2 9.9 4.7"/><path d="M12.8 9.6a4 4 0 0 1-4 3.2H4.5"/><path d="M6.1 14.3 4.4 12.8 6.1 11.3"/>';
+        ? REPEAT_LOOP + '<path d="M7.1 6.55 8.25 5.5v4.95"/>'
+        : REPEAT_LOOP;
   }
 
   function syncTabs() {
