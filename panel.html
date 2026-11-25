@@ -24,6 +24,12 @@
     --radius-md: 10px;
     --radius-lg: 14px;
     --radius-pill: 999px;
+    /* The sleeve label is the one surface that sits over artwork rather than
+       on the page: it takes the ink in the light appearance and the page's
+       own black in the dark one, so a title is always light on a dark band. */
+    --label-fill: color-mix(in srgb, var(--ink) 78%, transparent);
+    --label-solid: var(--ink);
+    --label-ink: var(--surface-solid);
     color-scheme: light;
   }
   :root[data-scheme="dark"] {
@@ -37,6 +43,9 @@
     --accent: #6f9dff;
     --accent-ink: #101014;
     --danger: #ff7b6f;
+    --label-fill: color-mix(in srgb, var(--surface-solid) 84%, transparent);
+    --label-solid: var(--surface-solid);
+    --label-ink: var(--ink);
     color-scheme: dark;
   }
 
@@ -69,22 +78,24 @@
   }
 
   /* ---- list tools ------------------------------------------------------ */
-  /* The search field and the platform scope live in the list column, directly
-     above the rows they act on, and fold away with their tabs: a bar of their
-     own would spend a whole page row on a control two tabs use. */
+  /* The wall's band: the tabs at its left, the search field and the platform
+     scope at its right, all on one line above the posters they act on. The
+     field and the chart kinds fold away with their tab; the platform stays
+     because it scopes both. */
   .library-tools {
     display: flex;
     align-items: center;
     gap: 8px;
-    flex: 0 0 auto;
-    padding: 0 16px 10px;
+    flex: 0 1 auto;
+    min-width: 0;
+    margin-left: auto;
   }
   .library-tools[hidden] { display: none; }
   .search {
     display: flex;
     align-items: center;
     gap: 7px;
-    flex: 1 1 auto;
+    flex: 0 1 264px;
     min-width: 0;
     height: 30px;
     padding: 0 10px 0 9px;
@@ -146,13 +157,14 @@
   }
 
   /* ---- stage --------------------------------------------------------- */
-  /* The page is the host's plain canvas: the list column, the sheet and the
-     transport sit on `--surface-solid` and only their own lines separate
-     them. The playing cover stays in the now block and the rows — it never
-     becomes the page's background. */
+  /* The page is the host's plain canvas and one view at a time: the wall of
+     covers when browsing, the record strip and its lyrics when listening.
+     Both sit on `--surface-solid`; only their own lines and the posters'
+     own frames separate anything. A cover is never the page's background. */
   .stage {
     position: relative;
     display: flex;
+    flex-direction: column;
     flex: 1 1 auto;
     min-height: 0;
     min-width: 0;
@@ -162,60 +174,64 @@
   .library {
     display: flex;
     flex-direction: column;
-    flex: 0 0 304px;
-    min-width: 232px;
+    flex: 1 1 auto;
     min-height: 0;
-    border-right: 1px solid var(--line);
+    min-width: 0;
     background: var(--surface-solid);
   }
-  /* With a song on, the page is the player and its lyrics: the list steps
-     aside until its toggle (or `/`) asks for it. The rows keep their DOM and
-     scroll position; only the column leaves the frame. */
-  .player:not(.list-open) .library { display: none; }
-  /* With the list away the sheet owns the frame, so its text keeps a reading
-     measure and the lyrics grow instead of stretching a 16px line across it. */
+  /* Picking a song hands the frame to the player and its lyrics; the wall
+     comes back only when its toggle or `/` asks for it. The posters keep
+     their DOM and scroll position, so returning is instant. */
+  .player:not(.list-open) .library,
+  .player.list-open .sheet { display: none; }
+  /* With the wall away the sheet owns the frame, so its text keeps a reading
+     measure instead of stretching a 16px lyric line across the whole panel. */
   .player:not(.list-open) .now,
   .player:not(.list-open) .lyrics {
     width: 100%;
-    max-width: 640px;
+    max-width: 720px;
     margin: 0 auto;
   }
-  /* The album is the anchor there: the cover steps up to a sleeve and the
-     block stacks under it, centred, so the page reads as a record rather than
-     a sidebar without a list. */
+  /* The record is the anchor there, so it opens as a strip: the sleeve at the
+     left, the title set large beside it, a hairline closing the band, and the
+     lyrics reading on under its left edge. It is the wall's poster opened
+     flat — one record, at full size, with the page to itself. */
   .player:not(.list-open) .now {
-    flex-direction: column;
-    gap: 18px;
-    padding: 34px 26px 12px;
-    text-align: center;
+    align-items: flex-end;
+    gap: 22px;
+    padding: 30px 32px 20px;
+    border-bottom: 1px solid var(--line);
   }
   .player:not(.list-open) .now-art {
-    width: 168px;
-    height: 168px;
+    width: 132px;
+    height: 132px;
     border-radius: var(--radius-lg);
     box-shadow: 0 26px 54px -26px color-mix(in srgb, var(--ink) 55%, transparent);
   }
-  .player:not(.list-open) .now-art .icon { width: 54px; height: 54px; }
+  .player:not(.list-open) .now-art .icon { width: 44px; height: 44px; }
+  .player:not(.list-open) .now-text { padding-bottom: 4px; }
   .player:not(.list-open) .now-title {
-    font-size: 26px;
-    font-weight: 700;
-    letter-spacing: -0.02em;
+    font-size: 30px;
+    font-weight: 720;
+    letter-spacing: -0.025em;
+    line-height: 1.15;
+    white-space: normal;
   }
-  .player:not(.list-open) .now-meta { margin-top: 6px; font-size: 13px; }
-  .player:not(.list-open) .now-badges { justify-content: center; margin-top: 10px; }
-  /* The lines follow the sleeve's axis: centred under it, the sung line in
-     the ink of a title and a touch heavier, the rest stepping back. The
-     side bar belongs to the list view's left edge, not to a centred column. */
-  .player:not(.list-open) .lyrics { padding: 16px 26px 40px; text-align: center; }
-  .player:not(.list-open) .lyric-line { padding: 7px 0; font-size: clamp(17px, 4vw, 26px); }
+  .player:not(.list-open) .now-meta { margin-top: 7px; font-size: 13px; }
+  .player:not(.list-open) .now-badges { margin-top: 11px; }
+  /* The sung line takes the ink of a title and a touch more weight; the rest
+     step back. The side bar marks the beat the sheet is on. */
+  .player:not(.list-open) .lyrics { padding: 22px 32px 44px; }
+  .player:not(.list-open) .lyric-line { padding: 9px 0; font-size: clamp(17px, 2.6vw, 20px); }
   .player:not(.list-open) .lyric-line.active { font-weight: 700; }
-  .player:not(.list-open) .lyric-line.active::before { display: none; }
   .library-head {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 16px;
     flex: 0 0 auto;
-    padding: 10px 16px 8px;
+    flex-wrap: wrap;
+    row-gap: 10px;
+    padding: 12px 20px;
   }
   .library-tabs { display: flex; align-items: center; gap: 16px; }
   .library-tab {
@@ -272,114 +288,169 @@
     box-shadow: 0 0 0 1px var(--line);
   }
   .library-count {
-    margin-left: auto;
+    min-width: 0;
     color: var(--ink-soft);
     font-size: 11px;
     font-variant-numeric: tabular-nums;
   }
+  /* The wall is the index: covers at one size, no list chrome of their own.
+     It is the frame's only scroller while browsing and keeps its edge. */
   .library-list {
     display: flex;
     flex-direction: column;
-    gap: 4px;
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
-    /* The rows are cards: they need a gap from the column's edge on both
-       sides, or the list reads as if it were cut off by the panel frame. */
-    padding: 8px 16px 16px;
+    padding: 2px 20px 22px;
     scroll-padding-block: 8px;
   }
-  .row {
+  .wall {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 6px;
-    flex: 0 0 auto;
-    width: 100%;
-    min-height: 52px;
-    padding: 7px 10px;
+    grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+    grid-auto-flow: dense;
+    gap: 12px;
+    align-content: start;
+  }
+  /* A poster is a card whose art fills it: the title rides a plate at its
+     foot, so a cover of any colour still reads. One frame serves hover,
+     playing and focus — never a second ring (D-1056). */
+  .poster {
+    position: relative;
+    display: block;
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
     background: var(--surface-raised);
     text-align: left;
   }
-  .row:hover { border-color: var(--line-strong); }
-  /* A row can be both playing and focused: the card keeps one frame, the
-     focus material is an inner stroke and selection is the tint plus the
-     accent title, never a second ring (D-1056). */
-  .row:focus-visible {
+  .poster:hover { border-color: var(--line-strong); }
+  .poster:focus-visible {
     border-color: var(--accent);
     box-shadow: inset 0 0 0 1px var(--accent);
     outline: none;
   }
-  .row.playing {
+  .poster.playing {
+    border-width: 2px;
     border-color: var(--accent);
     background: color-mix(in srgb, var(--accent) 10%, var(--surface-raised));
   }
-  .row-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
-  .row-rank {
-    flex: 0 0 18px;
-    color: var(--ink-soft);
-    font-size: 11px;
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-  }
-  .row-art {
+  .poster-art {
+    position: absolute;
+    inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    flex: 0 0 auto;
-    width: 40px;
-    height: 40px;
-    overflow: hidden;
-    border-radius: var(--radius-sm);
-    background: var(--control-fill);
     color: var(--ink-soft);
   }
-  .row-art img { width: 100%; height: 100%; object-fit: cover; }
-  .row-art .icon { width: 17px; height: 17px; }
-  .row-text { min-width: 0; }
-  .row-title {
+  .poster-art img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: opacity 140ms ease;
+  }
+  .poster-art .icon { width: 22px; height: 22px; }
+  /* One poster is read at a time: under the pointer, or a keyboard's focus,
+     the rest of the wall steps back and the touched cover comes forward. */
+  .wall:hover .poster:not(:hover) .poster-art img,
+  .wall:focus-within .poster:not(:focus-visible) .poster-art img { opacity: 0.8; }
+  /* The plate is the label stuck to the sleeve: the ink colour, with the
+     page's own surface as the writing on it — light-on-dark in the light
+     appearance and dark-on-light in the dark one, the same inversion the
+     host uses for every filled control. */
+  .poster-plate {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 7px 9px;
+    background: var(--label-fill);
+  }
+  .poster-title {
     overflow: hidden;
-    color: var(--ink);
+    color: var(--label-ink);
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 650;
     letter-spacing: -0.005em;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .row.playing .row-title { color: var(--accent); }
-  .row-meta {
-    overflow: hidden;
-    margin-top: 2px;
-    color: var(--ink-soft);
-    font-size: 11.5px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .row-side {
+  .poster-meta {
     display: flex;
-    align-items: center;
-    gap: 2px;
-    color: var(--ink-soft);
+    align-items: baseline;
+    gap: 8px;
+    color: color-mix(in srgb, var(--label-ink) 72%, transparent);
     font-size: 11px;
     font-variant-numeric: tabular-nums;
   }
-  .row-action {
+  .poster-artist {
+    overflow: hidden;
+    flex: 1 1 auto;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .poster-time { flex: 0 0 auto; }
+  /* The corner mark answers one question — this one's rank, or that it is
+     the song playing — on a chip the plate's colour carries too. */
+  .poster-mark {
+    position: absolute;
+    top: 7px;
+    left: 7px;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: var(--radius-xs);
+    background: var(--label-fill);
+    color: var(--label-ink);
+    font-size: 10px;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+  }
+  .poster-mark .bars { width: 11px; height: 10px; }
+  .poster-mark .bars i { background: var(--label-ink); }
+  /* Both marks are in every poster, and the playing class decides which one
+     the corner shows: play and pause repaint the highlight alone, never the
+     wall under the pointer. */
+  .poster .playing-mark { display: none; }
+  .poster.playing .playing-mark { display: flex; }
+  .poster.playing .rank-mark { display: none; }
+  .poster-action {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
     padding: 0;
     border: 0;
     border-radius: var(--radius-xs);
-    background: transparent;
-    color: var(--ink-soft);
+    background: var(--label-fill);
+    color: var(--label-ink);
     opacity: 0;
   }
-  .row:hover .row-action, .row-action:focus-visible { opacity: 1; }
-  .row-action:hover { background: var(--control-fill); color: var(--ink); }
+  .poster:hover .poster-action,
+  .poster:focus-within .poster-action,
+  .poster-action:focus-visible { opacity: 1; }
+  .poster-action:hover { background: var(--label-solid); }
+  .poster-action .icon { width: 13px; height: 13px; }
+  /* One tall poster in a dozen keeps the wall from reading as a table of
+     thumbnails: it takes two covers across and the two rows it spans. */
+  .poster.feature {
+    grid-column: span 2;
+    grid-row: span 2;
+    border-radius: var(--radius-lg);
+  }
+  .poster.feature .poster-plate { padding: 10px 12px; }
+  .poster.feature .poster-title { font-size: 19px; letter-spacing: -0.015em; }
+  .poster.feature .poster-meta { font-size: 12px; }
   /* A blank tab gets a mark, a sentence and a hint in three ranks: the circle
      carries the icon, the title says what is missing, the note says what to
      do — a single grey paragraph read as one flat line. */
@@ -411,8 +482,37 @@
   .empty-title { color: var(--ink); font-size: 13px; font-weight: 650; }
   .empty-note { max-width: 220px; font-size: 12px; }
 
+  /* An empty wall still has one thing to say: what this page is for, and
+     where the last few queries went. The word sits centred with the history
+     under it, both on a reading measure, so the first screen is a landing
+     rather than a blank canvas. */
+  .landing {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    width: 100%;
+    max-width: 440px;
+    margin: auto;
+    padding: 24px 0 40px;
+    text-align: center;
+  }
+  .landing-word {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  .landing-title { color: var(--ink); font-size: 15px; font-weight: 650; }
+  .landing-note { color: var(--ink-soft); font-size: 12px; }
   /* Recent queries are quiet lines, not cards: they are a search history, so
      only the hover fills them and the remove waits for the row. */
+  .recent {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    text-align: left;
+  }
   .recent-head {
     display: flex;
     align-items: center;
@@ -484,16 +584,17 @@
     .recent-forget { opacity: 0.7; }
   }
 
-  /* The playing row says so with motion: three bars step out of phase where
-     the duration sits, and rest at a fixed height when motion is reduced. */
-  .row-bars {
+  /* The playing poster says so with motion: three bars step out of phase
+     inside its corner chip, and rest at a fixed height when motion is
+     reduced. */
+  .bars {
     display: flex;
     align-items: flex-end;
     gap: 2px;
     width: 13px;
     height: 12px;
   }
-  .row-bars i {
+  .bars i {
     width: 2px;
     height: 100%;
     border-radius: var(--radius-pill);
@@ -501,14 +602,14 @@
     transform-origin: bottom;
     animation: bars 900ms ease-in-out infinite;
   }
-  .row-bars i:nth-child(2) { animation-delay: -300ms; }
-  .row-bars i:nth-child(3) { animation-delay: -600ms; }
+  .bars i:nth-child(2) { animation-delay: -300ms; }
+  .bars i:nth-child(3) { animation-delay: -600ms; }
   @keyframes bars {
     0%, 100% { transform: scaleY(0.35); }
     50% { transform: scaleY(1); }
   }
   @media (prefers-reduced-motion: reduce) {
-    .row-bars i { animation: none; transform: scaleY(0.6); }
+    .bars i { animation: none; transform: scaleY(0.6); }
   }
 
   /* ---- lyric sheet ---------------------------------------------------- */
@@ -609,33 +710,6 @@
     line-height: 1.7;
     text-align: center;
   }
-  .hero {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    padding: 30px;
-    text-align: center;
-  }
-  /* The waiting sheet is a sleeve with nothing in it yet: one quiet tile,
-     a title and a hint, so the empty state still has an anchor. */
-  .hero-art {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 150px;
-    height: 150px;
-    border-radius: var(--radius-lg);
-    background: var(--control-fill);
-    box-shadow: inset 0 0 0 1px var(--line);
-    color: var(--ink-soft);
-  }
-  .hero-art .icon { width: 44px; height: 44px; stroke-width: 1.2; opacity: 0.8; }
-  .hero-title { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
-  .hero-note { max-width: 300px; color: var(--ink-soft); font-size: 12.5px; line-height: 1.65; }
-
   /* ---- transport ------------------------------------------------------ */
   .transport {
     position: relative;
@@ -797,26 +871,25 @@
   audio { display: none; }
 
   /* ---- narrow and short frames --------------------------------------- */
-  /* A narrow frame holds one view at a time, never two halves: with the list
-     up it fills the frame and the sheet steps aside, so a row is never cut
-     in half above the lyrics; closing the list (or picking a row) hands the
-     whole frame to the player and its lyrics. The now strip gives up the
-     volume instead of squeezing the title. */
+  /* A narrow frame keeps one view at a time too, and the band it shares with
+     the wall folds: the tabs take their own row and the search field fills
+     the next one. The covers drop a size so the wall keeps its density; the
+     record strip gives up the volume instead of squeezing its title. */
   @media (max-width: 760px) {
-    .library {
-      flex: 1 1 auto;
-      min-width: 0;
-      min-height: 0;
-      border-right: 0;
-    }
-    .player.list-open .sheet { display: none; }
+    .library-head { padding: 10px 14px 10px; gap: 12px; }
+    .library-tools { flex: 1 1 100%; margin-left: 0; }
+    .search { flex: 1 1 auto; }
+    .library-list { padding: 2px 14px 18px; }
+    .wall { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
+    .poster.feature .poster-title { font-size: 16px; }
     .now { padding: 12px 16px 4px; }
     .now-art { width: 58px; height: 58px; }
     /* A sidebar is short as well as narrow: the sleeve keeps its step up
        without eating the lyrics' room. */
-    .player:not(.list-open) .now { gap: 14px; padding: 22px 16px 8px; }
-    .player:not(.list-open) .now-art { width: 128px; height: 128px; }
-    .player:not(.list-open) .now-title { font-size: 21px; }
+    .player:not(.list-open) .now { gap: 16px; padding: 20px 18px 14px; }
+    .player:not(.list-open) .now-art { width: 104px; height: 104px; }
+    .player:not(.list-open) .now-title { font-size: 23px; }
+    .player:not(.list-open) .lyrics { padding: 16px 18px 32px; }
     .lyrics { padding: 14px 20px 28px; }
     .transport { padding: 8px 14px 12px; }
     .transport-row { grid-template-columns: minmax(0, 1fr) auto; }
@@ -848,24 +921,24 @@
           <button class="library-tab" data-tab="queue" role="tab" aria-selected="false">队列</button>
         </div>
         <span class="library-count" id="library-count"></span>
-      </div>
-      <div class="library-tools" id="library-tools">
-        <form class="search" id="search-form" role="search">
-          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.4"/><path d="M10.3 10.3 14 14"/></svg>
-          <input id="search-input" type="search" placeholder="搜索歌曲、歌手" autocomplete="off" spellcheck="false" aria-label="搜索歌曲、歌手">
-        </form>
-        <div class="chart-kinds" id="chart-kinds" role="tablist" aria-label="榜单种类" hidden>
-          <button class="chart-kind" data-kind="hot" role="tab" aria-selected="true">热歌榜</button>
-          <button class="chart-kind" data-kind="new" role="tab" aria-selected="false">新歌榜</button>
+        <div class="library-tools" id="library-tools">
+          <form class="search" id="search-form" role="search">
+            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.4"/><path d="M10.3 10.3 14 14"/></svg>
+            <input id="search-input" type="search" placeholder="搜索歌曲、歌手" autocomplete="off" spellcheck="false" aria-label="搜索歌曲、歌手">
+          </form>
+          <div class="chart-kinds" id="chart-kinds" role="tablist" aria-label="榜单种类" hidden>
+            <button class="chart-kind" data-kind="hot" role="tab" aria-selected="true">热歌榜</button>
+            <button class="chart-kind" data-kind="new" role="tab" aria-selected="false">新歌榜</button>
+          </div>
+          <label class="source-picker" title="音乐平台">
+            <select id="source-select" aria-label="音乐平台">
+              <option value="netease">网易云</option>
+              <option value="qq">QQ 音乐</option>
+              <option value="kuwo">酷我</option>
+            </select>
+            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.5 8 10l3.5-3.5"/></svg>
+          </label>
         </div>
-        <label class="source-picker" title="音乐平台">
-          <select id="source-select" aria-label="音乐平台">
-            <option value="netease">网易云</option>
-            <option value="qq">QQ 音乐</option>
-            <option value="kuwo">酷我</option>
-          </select>
-          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.5 8 10l3.5-3.5"/></svg>
-        </label>
       </div>
       <div class="library-list" id="library-list" role="tabpanel"></div>
     </aside>
@@ -1000,7 +1073,7 @@
     source: "netease",
     tab: "search",
     /* View state, page-only: with a song on the page shows the player and
-       its lyrics, and the list is one toggle (or `/`) away. */
+       its lyrics, and the wall is one toggle (or `/`) away. */
     browsing: true,
     results: [],
     chartKind: "hot",
@@ -1207,7 +1280,11 @@
      clear-all for the block. A line runs its query again. They are the most
      recent first, which is the order the list was kept in. */
   function renderRecent() {
-    var html = '<div class="recent-head"><span>最近搜索</span>' +
+    var html = '<div class="landing"><div class="landing-word">' +
+      '<div class="empty-mark">' + icon("note") + "</div>" +
+      '<div class="landing-title">搜索一首歌</div>' +
+      '<div class="landing-note">输入歌名或歌手，按 Enter 搜索</div></div>' +
+      '<div class="recent"><div class="recent-head"><span>最近搜索</span>' +
       '<button class="recent-clear" type="button" data-clear-searches>清除</button></div>';
     state.searches.forEach(function (word) {
       var safe = escapeText(word);
@@ -1217,7 +1294,7 @@
         '<button class="recent-forget" type="button" data-forget-search="' + safe +
         '" aria-label="删除这条搜索记录" title="删除">' + icon("remove") + "</button></div>";
     });
-    list.innerHTML = html;
+    list.innerHTML = html + "</div></div>";
   }
 
   function rows() {
@@ -1252,27 +1329,36 @@
       }
       return;
     }
-    var html = "";
+    // A wall of three would put a quarter of it in one poster: the tall
+    // feature only earns its size when there is a wall to measure it by.
+    var stride = data.length >= 8 ? 12 : 0;
+    var html = '<div class="wall">';
     data.forEach(function (song, index) {
       var playing = sameSong(song, state.current);
       var action = state.tab === "queue"
-        ? '<button class="row-action" type="button" data-remove="' + index + '" aria-label="从队列移除" title="从队列移除">' + icon("remove") + "</button>"
-        : '<button class="row-action" type="button" data-queue="' + index + '" aria-label="加入队列" title="加入队列">' + icon("plus") + "</button>";
-      var rank = state.tab === "chart" ? '<span class="row-rank">' + (index + 1) + "</span>" : "";
-      // The playing row trades its duration for three bars, the way a track
-      // list does; a paused song keeps the bars resting.
-      var side = playing
-        ? '<span class="row-bars" aria-hidden="true"><i></i><i></i><i></i></span>'
-        : song.duration ? '<span>' + clock(song.duration) + "</span>" : "";
-      html += '<div class="row' + (playing ? " playing" : "") + '" role="button" tabindex="0" data-play="' + index + '" aria-label="播放 ' +
+        ? '<button class="poster-action" type="button" data-remove="' + index + '" aria-label="从队列移除" title="从队列移除">' + icon("remove") + "</button>"
+        : '<button class="poster-action" type="button" data-queue="' + index + '" aria-label="加入队列" title="加入队列">' + icon("plus") + "</button>";
+      // The corner chip answers one question: the song's rank on a chart, or
+      // that this is the one playing, where the rank would sit. Both are
+      // written and the playing class picks; a paused song keeps the bars
+      // resting at a fixed height.
+      var mark = (state.tab === "chart"
+        ? '<span class="poster-mark rank-mark">' + ("0" + (index + 1)).slice(-2) + "</span>"
+        : "") +
+        '<span class="poster-mark playing-mark"><span class="bars" aria-hidden="true"><i></i><i></i><i></i></span></span>';
+      var feature = stride && index % stride === 4 ? " feature" : "";
+      html += '<div class="poster' + (playing ? " playing" : "") + feature +
+        '" role="button" tabindex="0" data-play="' + index + '" aria-label="播放 ' +
         escapeText(song.title) + '">' +
-        '<div class="row-main">' + rank + '<div class="row-art">' + artHTML(song) + "</div>" +
-        '<div class="row-text"><div class="row-title">' + escapeText(song.title) + "</div>" +
-        '<div class="row-meta">' + escapeText(song.artist || "未知歌手") +
-        (song.album ? " · " + escapeText(song.album) : "") + "</div></div></div>" +
-        '<div class="row-side">' + side + action + "</div></div>";
+        '<div class="poster-art">' + artHTML(song) + "</div>" + mark + action +
+        '<div class="poster-plate"><div class="poster-title">' +
+        escapeText(song.title) + "</div>" +
+        '<div class="poster-meta"><span class="poster-artist">' +
+        escapeText(song.artist || "未知歌手") + "</span>" +
+        (song.duration ? '<span class="poster-time">' + clock(song.duration) + "</span>" : "") +
+        "</div></div></div>";
     });
-    list.innerHTML = html;
+    list.innerHTML = html + "</div>";
   }
 
   function renderNow() {
@@ -1296,18 +1382,10 @@
     syncModeButtons();
   }
 
-  function renderHero() {
-    if (state.current) {
-      renderLyrics();
-      return;
-    }
-    lyrics.innerHTML = '<div class="hero"><div class="hero-art">' + icon("note") + "</div>" +
-      '<div class="hero-title">听一首歌</div>' +
-      '<div class="hero-note">在左侧搜索并播放。歌词会在这里跟随时钟滚动，点任意一行可以跳到那一句。</div></div>';
-  }
-
   function renderLyrics() {
-    if (!state.current) { renderHero(); return; }
+    // The sheet only exists while a song does: picking one is what opens it,
+    // so an empty sheet has nothing to say and no one to say it to.
+    if (!state.current) { lyrics.innerHTML = ""; return; }
     if (!state.lyric.length) {
       lyrics.innerHTML = '<div class="lyric-empty"><div>' +
         (state.lyricLoading ? "正在读歌词…" : "暂无歌词") +
@@ -1323,7 +1401,7 @@
   }
 
   // syncPlayingRows repaints only the highlight, so play and pause never
-  // rebuild the list under the pointer or throw away its scroll position.
+  // rebuild the wall under the pointer or throw away its scroll position.
   function syncPlayingRows() {
     var data = rows();
     list.querySelectorAll("[data-play]").forEach(function (node) {
@@ -1345,7 +1423,7 @@
 
   function renderAll() {
     renderList();
-    renderHero();
+    renderLyrics();
     render();
   }
 
@@ -1385,7 +1463,7 @@
   /* A switch is one transaction. Until the new address actually plays, the
      page keeps the previous song, queue, index, lyric and audio element
      untouched, so a refused track leaves the player exactly where it was
-     instead of half-swapping the cover and the list while the lyric stays
+     instead of half-swapping the cover and the wall while the lyric stays
      behind. */
   function start(song, target) {
     if (!song) return Promise.resolve();
@@ -1415,8 +1493,9 @@
         if (target) {
           state.source = target.source;
           syncSource();
-          /* A song the user picked opens the listening view; a row the queue
-             advanced to on its own leaves the list where the user put it. */
+          /* A song the user picked opens the listening view; a track the
+             queue advanced to on its own leaves the wall where the user put
+             it. */
           if (target.collapse) setBrowsing(false);
         }
         state.current = playing;
@@ -1433,7 +1512,7 @@
         } else hideToast();
         saveState();
         render();
-        renderHero();
+        renderLyrics();
         loadLyric(playing);
       }, function (error) {
         if (ticket === switchTicket) putBack(kept);
@@ -1491,7 +1570,7 @@
     state.lyricLoading = true;
     state.lyric = [];
     state.lyricIndex = -1;
-    renderHero();
+    renderLyrics();
     invoke({ action: "lyric", source: song.source, song: song }).then(function (answer) {
       if (ticket !== lyricRequest) return;
       state.lyricLoading = false;
@@ -1640,9 +1719,9 @@
 
   /* ---- search box ------------------------------------------------------ */
   /* The field belongs to the search tab; `/` from anywhere brings that tab
-     and the caret up without disturbing the rows already on screen. */
-  /* The listening view: a song the user picked from the list hands the screen
-     to the player and its lyrics, and the list comes back only when its
+     and the caret up without disturbing the posters already on screen. */
+  /* The listening view: a song the user picked from the wall hands the screen
+     to the player and its lyrics, and the wall comes back only when its
      toggle or `/` asks for it. Auto-advance never yanks it away mid-browse. */
   function setBrowsing(open) {
     state.browsing = open;
